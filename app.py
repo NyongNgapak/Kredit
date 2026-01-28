@@ -59,7 +59,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<h1 class="main-header">🏦 Sistem Pakar Pemberian Kredit</h1>', unsafe_allow_html=True)
-st.caption("Metode Fuzzy Mamdani + Analisis DBR Otomatis (Khusus Koperasi Karyawan)")
+st.caption("Metode Fuzzy Mamdani + Analisis DBR (Khusus Koperas i Karyawan)")
 
 status = ctrl.Antecedent(np.arange(0, 11, 1), 'status')
 lama = ctrl.Antecedent(np.arange(0, 11, 1), 'lama')
@@ -99,34 +99,38 @@ kelayakan['dipertimbangkan'] = fuzz.trimf(kelayakan.universe, [30, 50, 70])
 kelayakan['layak'] = fuzz.trimf(kelayakan.universe, [60, 100, 100])
 
 rules = [
-    ctrl.Rule(status['rendah'], kelayakan['tidak_layak']),
-    ctrl.Rule(jaminan['buruk'], kelayakan['tidak_layak']),
-    ctrl.Rule(lama['rendah'], kelayakan['tidak_layak']),
+    # Tidak layak
     ctrl.Rule(gaji['rendah'], kelayakan['tidak_layak']),
-    ctrl.Rule(dbr['tinggi'], kelayakan['tidak_layak']),
-    
+    ctrl.Rule(jaminan['buruk'], kelayakan['tidak_layak']),
+
+    # Kombinasi tidak layak
+    ctrl.Rule(lama['rendah'] & gaji['sedang'], kelayakan['tidak_layak']),
+
+    # Layak
     ctrl.Rule(
-        status['tinggi'] & lama['tinggi'] & gaji['tinggi'] & jaminan['baik'] & pinjaman['rendah'],
-        kelayakan['layak']
-    ),
-    ctrl.Rule(
-        gaji['tinggi'] & jaminan['baik'] & dbr['rendah'],
+        lama['tinggi'] & gaji['tinggi'] & jaminan['baik'],
         kelayakan['layak']
     ),
 
+    # Dipertimbangkan
     ctrl.Rule(
-        (status['sedang'] | status['tinggi']) &
-        (gaji['sedang'] | gaji['tinggi']) &
-        (jaminan['sedang'] | jaminan['baik']) &
-        (dbr['sedang'] | dbr['rendah']),
+        lama['sedang'] & gaji['sedang'] & jaminan['sedang'],
         kelayakan['dipertimbangkan']
     ),
 
     ctrl.Rule(
-        status['sedang'] & lama['sedang'] & gaji['sedang'] & jaminan['sedang'],
+        lama['rendah'] & gaji['tinggi'] & jaminan['baik'],
+        kelayakan['dipertimbangkan']
+    ),
+
+    ctrl.Rule(
+        (gaji['sedang'] | gaji['tinggi']) &
+        (jaminan['sedang'] | jaminan['baik']) &
+        (lama['sedang'] | lama['rendah']),
         kelayakan['dipertimbangkan']
     )
 ]
+
 
 kelayakan_ctrl = ctrl.ControlSystem(rules)
 kelayakan_sim = ctrl.ControlSystemSimulation(kelayakan_ctrl)
@@ -152,14 +156,11 @@ gaji_val = st.number_input(
     format="%.1f"
 )
 
-jaminan_val = st.selectbox("Jenis Jaminan", [
+jaminan_val = st.selectbox(
+    "Jenis Jaminan", [
     "Tidak Ada",
-    "Potong Gaji Otomatis",
-    "Jaminan Rekan Kerja",
-    "BPKB Motor",
-    "BPKB Mobil",
-    "SHM Rumah",
-    "Surat Jaminan Atasan"
+    "BPKB Motor/Mobil",
+    "SHM Tanah/Rumah"
 ])
 
 pinjaman_val = st.number_input(
@@ -167,7 +168,7 @@ pinjaman_val = st.number_input(
     min_value=0.0,
     max_value=50.0,
     value=20.0,
-    step=0.5,
+    step=1.0,
     format="%.1f"
 )
 
@@ -184,13 +185,9 @@ cicilan_lain_val = st.number_input(
 
 status_map = {"Part-time": 2, "Kontrak": 5, "Tetap": 8}
 jaminan_map = {
-    "Tidak Ada": 2,
-    "Potong Gaji Otomatis": 9,
-    "Jaminan Rekan Kerja": 5,
-    "BPKB Motor": 4,
-    "BPKB Mobil": 6,
-    "SHM Rumah": 8,
-    "Surat Jaminan Atasan": 7
+    "Tidak Ada": 0,
+    "BPKB Motor/Mobil": 4,
+    "SHM Tanah/Rumah": 8
 }
 
 if gaji_val <= 0:
@@ -215,17 +212,14 @@ with col4:
     st.info(f"📌 Debt Burden Ratio (DBR): **{dbr_value:.1f}%**")
 
 if dbr_value > 60:
-    st.warning("⚠️ DBR melebihi 60% — risiko tinggi menurut OJK!")
+    st.warning("⚠️ DBR melebihi 60% — risiko tinggi!")
 
 if st.button("🔍 Proses Permohonan Kredit", use_container_width=True):
     try:
-        kelayakan_sim.input['status'] = status_map[status_val]
         kelayakan_sim.input['lama'] = float(lama_val)
         kelayakan_sim.input['gaji'] = float(gaji_val)
         kelayakan_sim.input['jaminan'] = jaminan_map[jaminan_val]
-        kelayakan_sim.input['pinjaman'] = float(pinjaman_val)
-        kelayakan_sim.input['dbr'] = float(dbr_value)
-
+        
         kelayakan_sim.compute()
         hasil = kelayakan_sim.output['kelayakan']
 
@@ -243,11 +237,8 @@ if st.button("🔍 Proses Permohonan Kredit", use_container_width=True):
         else:
             st.error("❌ **Kredit Tidak Layak**")
             st.write("Profil risiko terlalu tinggi. Pertimbangkan penolakan.")
-
         st.markdown('</div>', unsafe_allow_html=True)
-
     except Exception as e:
         st.error(f"Terjadi kesalahan saat memproses: {e}")
-
 st.divider()
 st.caption("💡 Sistem ini menggunakan logika fuzzy Mamdani dan dirancang khusus untuk koperasi karyawan.")
